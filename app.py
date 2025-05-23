@@ -17,10 +17,9 @@ def load_model():
     """Load the trained model when server starts"""
     global model
     try:
-        print("Current Directory:", os.getcwd())
-        print("Files in directory:", os.listdir())
-        
-        # Look for your specific model file
+        print("🛠 Current Directory:", os.getcwd())
+        print("📁 Files in directory:", os.listdir())
+
         model_file = 'my_model.joblib'
         if os.path.exists(model_file):
             model = joblib.load(model_file)
@@ -29,14 +28,15 @@ def load_model():
         else:
             print("✗ Error: my_model.joblib not found!")
             return False
-            
     except Exception as e:
         print(f"✗ Error loading model: {str(e)}")
         return False
 
+# Load model immediately (for both dev server and Gunicorn)
+load_model()
+
 @app.route('/')
 def home():
-    """Health check endpoint - matches your water control system style"""
     return jsonify({
         "message": "Environmental Control API is working!",
         "status": "success",
@@ -54,7 +54,6 @@ def home():
 
 @app.route('/health')
 def health_check():
-    """Enhanced health check with more details"""
     return jsonify({
         "server_status": "running",
         "model_status": "loaded" if model is not None else "not_loaded",
@@ -67,17 +66,7 @@ def health_check():
 
 @app.route('/predict', methods=['POST'])
 def predict_airflow_level():
-    """
-    Predict airflow level based on sensor readings
-    Expected JSON input:
-    {
-        "airflow": 180,
-        "humidity": 50.5,
-        "temperature": 23.0
-    }
-    """
     try:
-        # Check if model is loaded
         if model is None:
             return jsonify({
                 "status": "error",
@@ -85,18 +74,14 @@ def predict_airflow_level():
                 "success": False
             }), 500
 
-        # Get JSON data from mobile app
         data = request.get_json()
-        
-        # Validate input
         if not data:
             return jsonify({
                 "status": "error",
                 "message": "No JSON data provided",
                 "success": False
             }), 400
-        
-        # Extract sensor readings with better error handling
+
         required_fields = ['airflow', 'humidity', 'temperature']
         for field in required_fields:
             if field not in data:
@@ -106,8 +91,7 @@ def predict_airflow_level():
                     "required_fields": required_fields,
                     "success": False
                 }), 400
-        
-        # Convert to float with error handling
+
         try:
             airflow = float(data['airflow'])
             humidity = float(data['humidity'])
@@ -118,37 +102,25 @@ def predict_airflow_level():
                 "message": f"Invalid data types. All fields must be numbers. Error: {str(e)}",
                 "success": False
             }), 400
-        
-        # Enhanced validation with warnings (like your water system)
+
         validation_warnings = []
-        
         if not (50 <= airflow <= 500):
             validation_warnings.append("Airflow outside recommended range (50-500)")
-        
         if not (0 <= humidity <= 100):
             validation_warnings.append("Humidity outside valid range (0-100%)")
-        
         if not (10 <= temperature <= 40):
             validation_warnings.append("Temperature outside recommended range (10-40°C)")
-        
-        # Create input array for model
+
         input_features = np.array([[airflow, humidity, temperature]])
-        
-        # Make prediction
         prediction = model.predict(input_features)
-        predicted_level = int(prediction[0])
-        
-        # Ensure level is within valid range (1-5)
-        predicted_level = max(1, min(5, predicted_level))
-        
-        # Get prediction probability (confidence)
+        predicted_level = max(1, min(5, int(prediction[0])))
+
         try:
             prediction_proba = model.predict_proba(input_features)
             confidence = float(max(prediction_proba[0])) * 100
         except:
-            confidence = 85.0  # Default confidence if probabilities not available
-        
-        # Build response (matches your water system style)
+            confidence = 85.0
+
         response = {
             "status": "success",
             "prediction": {
@@ -164,13 +136,12 @@ def predict_airflow_level():
             "timestamp": datetime.now().isoformat(),
             "success": True
         }
-        
-        # Add warnings if any
+
         if validation_warnings:
             response["warnings"] = validation_warnings
-        
+
         return jsonify(response)
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -180,10 +151,9 @@ def predict_airflow_level():
         }), 500
 
 def get_level_description(level):
-    """Get human-readable description for airflow level"""
     descriptions = {
         1: "Minimal airflow - Good environmental conditions",
-        2: "Low airflow - Slightly elevated conditions", 
+        2: "Low airflow - Slightly elevated conditions",
         3: "Medium airflow - Normal operating conditions",
         4: "High airflow - Poor conditions, increased ventilation needed",
         5: "Maximum airflow - Critical conditions, full ventilation required"
@@ -192,78 +162,46 @@ def get_level_description(level):
 
 @app.route('/batch_predict', methods=['POST'])
 def batch_predict():
-    """
-    Predict multiple readings at once
-    Expected JSON input:
-    {
-        "readings": [
-            {"airflow": 180, "humidity": 50.5, "temperature": 23.0},
-            {"airflow": 200, "humidity": 60.0, "temperature": 25.0}
-        ]
-    }
-    """
     try:
         if model is None:
-            return jsonify({
-                "status": "error",
-                "message": "Model not loaded",
-                "success": False
-            }), 500
+            return jsonify({"status": "error", "message": "Model not loaded", "success": False}), 500
 
         data = request.get_json()
         if not data or 'readings' not in data:
-            return jsonify({
-                "status": "error",
-                "message": "Please provide 'readings' array with sensor data",
-                "success": False
-            }), 400
+            return jsonify({"status": "error", "message": "Please provide 'readings' array", "success": False}), 400
 
         readings = data['readings']
         if not isinstance(readings, list):
-            return jsonify({
-                "status": "error",
-                "message": "Readings must be an array",
-                "success": False
-            }), 400
+            return jsonify({"status": "error", "message": "Readings must be an array", "success": False}), 400
 
         results = []
-        
         for i, reading in enumerate(readings):
             try:
-                # Prepare input
                 airflow = float(reading['airflow'])
                 humidity = float(reading['humidity'])
                 temperature = float(reading['temperature'])
-                
                 input_features = np.array([[airflow, humidity, temperature]])
-                
-                # Make prediction
                 prediction = model.predict(input_features)
                 predicted_level = max(1, min(5, int(prediction[0])))
-                
-                # Get confidence
+
                 try:
                     prediction_proba = model.predict_proba(input_features)
                     confidence = float(max(prediction_proba[0])) * 100
                 except:
                     confidence = 85.0
-                
+
                 results.append({
                     "index": i,
                     "airflow_level": predicted_level,
                     "confidence": round(confidence, 1),
                     "recommendation": get_level_description(predicted_level),
-                    "input": {
-                        "airflow": airflow,
-                        "humidity": humidity,
-                        "temperature": temperature
-                    }
+                    "input": reading
                 })
-                
+
             except Exception as e:
                 results.append({
                     "index": i,
-                    "error": f"Invalid data: {str(e)}",
+                    "error": str(e),
                     "input": reading
                 })
 
@@ -277,22 +215,12 @@ def batch_predict():
         })
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Batch prediction failed: {str(e)}",
-            "success": False
-        }), 500
+        return jsonify({"status": "error", "message": str(e), "success": False}), 500
 
 @app.route('/model_info')
 def model_info():
-    """Get information about the loaded model"""
     if model is None:
-        return jsonify({
-            "status": "error",
-            "message": "Model not loaded",
-            "success": False
-        }), 500
-    
+        return jsonify({"status": "error", "message": "Model not loaded", "success": False}), 500
     try:
         info = {
             "status": "success",
@@ -310,17 +238,15 @@ def model_info():
                 "5": "Maximum airflow (critical)"
             }
         }
-        
-        # Add feature importance if available
+
         if hasattr(model, 'feature_importances_'):
             features = ["airflow", "humidity", "temperature"]
-            importance_dict = {}
-            for feature, importance in zip(features, model.feature_importances_):
-                importance_dict[feature] = round(float(importance), 3)
-            info["feature_importance"] = importance_dict
-        
+            info["feature_importance"] = {
+                f: round(float(i), 3) for f, i in zip(features, model.feature_importances_)
+            }
+
         return jsonify(info)
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -328,7 +254,6 @@ def model_info():
             "success": False
         }), 500
 
-# Error handlers
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({
@@ -349,25 +274,14 @@ def internal_error(error):
 if __name__ == '__main__':
     print("Starting Environmental Control API Server...")
     print("=" * 50)
-    
-    # Load model on startup
-    if load_model():
-        print("Server starting on http://localhost:5000")
-        print("Available endpoints:")
-        print("  GET  /           - Home page")
-        print("  GET  /health     - Health check")
-        print("  POST /predict    - Single prediction")
-        print("  POST /batch_predict - Multiple predictions")
-        print("  GET  /model_info - Model information")
-        print("=" * 50)
-        
-        # Start server (production ready)
-        port = int(os.environ.get('PORT', 5000))
-        app.run(
-            host='0.0.0.0',
-            port=port,
-            debug=True
-        )
-    else:
-        print("Failed to load model. Please check if 'my_model.joblib' exists.")
-        print("Run the model training script first to create the model file.")
+    print("Server starting on http://localhost:5000")
+    print("Available endpoints:")
+    print("  GET  /           - Home page")
+    print("  GET  /health     - Health check")
+    print("  POST /predict    - Single prediction")
+    print("  POST /batch_predict - Multiple predictions")
+    print("  GET  /model_info - Model information")
+    print("=" * 50)
+
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
